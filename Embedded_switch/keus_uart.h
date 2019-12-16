@@ -10,7 +10,11 @@
 #define UART_INITIATOR  0xAA
 #define UART_TERNINATOR 0xFF
 
-void uartRxCb( uint8 port, uint8 event );
-void initUart(void);
+void uart0RxCb( uint8 port, uint8 event );
+void initUart0(void);
+
+// void uart1RxCb( uint8 port, uint8 event );
+// void initUart1(void);
+
 
 #endif  //KEUS_UART_H_INCLUDED

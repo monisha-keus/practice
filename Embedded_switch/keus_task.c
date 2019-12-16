@@ -9,10 +9,10 @@ bool init_status = 0;
 bool read_status = 0;
 bool write_status = 0;
 
-bool debounce = true;
+bool debounce = false;
 bool toggle = false, toggle1 = false, toggle3 = false;
 uint8 count = 0, count1 = 0, count3 = 0;//led_state;
-uint8 button_Pressed =0 ;
+uint8 button_Pressed =0,button_state = 0;
 struct CONFIG_INFO_t config_data[4];
 
 void ledTimerCbk(uint8 timerId);
@@ -134,7 +134,11 @@ void KEUS_init_fnc(void)
   KeusGPIOInterruptEnable(&buttonPin2);
   KeusGPIOInterruptEnable(&buttonPin3);
   KeusGPIOInterruptEnable(&buttonPin4);
+
+  //******Enabling Timer and Debounce
   KeusTimerUtilAddTimer(&intervalTimer);
+  KeusTimerUtilAddTimer(&debounceTimer);
+
   init_status = KeusThemeSwitchMiniMemoryInit();
   read_status = KeusThemeSwitchMiniReadConfigDataIntoMemory();
   //*****Timer Initialization
@@ -144,7 +148,7 @@ void KEUS_init_fnc(void)
   KeusTimerUtilStartTimer();
 
   //*****UART Initialization
-  initUart();
+  initUart0();
 
   HalUARTWrite(HAL_UART_PORT_0, "KEUS INIT", (byte)osal_strlen("KEUS INIT"));
   KEUS_loop();
@@ -171,12 +175,11 @@ void KEUS_loop(void)
       uart_send_button_ack();
     }
     event_t =0x00;
+    button_Pressed = 0;
     }
-    if (event_t & GET_BUTTON_STATE)
-  {
-    //   execute_scene_task();
-    uart_send_ack(cmd_id);
-  }
+    // if (event_t & GET_BUTTON_STATE){
+    //   uart_send_ack(cmd_id);
+    // }
   }
 }
 
@@ -207,11 +210,9 @@ void process_Rx_data(void)
 
   else if (event_t & GET_CONFIG_STATE)
   {
-    //   execute_scene_task();
     uart_send_config_sate_ack();
   }
 
- // write_status = KeusThemeSwitchMiniWriteConfigDataIntoMemory();
   event_t = 0x00;
 }
 
@@ -224,7 +225,6 @@ void process_Rx_data(void)
 void group_control(void)
 {
   uint8 no_of_led, i = 0, data_ptr = 1, led_state, led_no;
-  //data_ptr++;
   no_of_led = data_buff[data_ptr];
   data_ptr++;
 
@@ -232,46 +232,14 @@ void group_control(void)
   {
     led_no = data_buff[data_ptr++];
     led_state = data_buff[data_ptr++];
-    //update_led_array(led_no,led_state);
     validate_state(led_no, led_state);
   }
   
 }
 
-// void update_led_array(uint8 led_no,uint8 led_state){
-// switch (led_no)
-//   {
-//   case 0x01:{
-//       // ledPin1.state = led_state;
-//       // KeusGPIOSetPinValue(&ledPin1);
-//       validate_state(led_no,led_state);
-//       break;
-//   }
-//   case 0x02:{
-//     ledPin2.state = led_state;
-//     KeusGPIOSetPinValue(&ledPin2);
-//     break;
-//   }
-
-//   case 0x03:{
-//     ledPin3.state = led_state;
-//     KeusGPIOSetPinValue(&ledPin3);
-//     break;
-//   }
-
-//   case 0x04:{
-//     ledPin4.state = led_state;
-//     KeusGPIOSetPinValue(&ledPin4);
-//     break;
-//   }
-
-//   default:
-//     break;
-// }
-
 /***************************************************************************
  * @fn      validate_state
- * @brief   based on config_id of corresponding led validate state
+ * @brief   based on config_id of corresponding led validate given switch state 
  * @param   led_state : 0-255
  *          led_no    : which led
  * 
@@ -287,45 +255,46 @@ void validate_state(uint8 led_no, uint8 led_state_t)
     {
       if (led_state == 0)
       {
-        ledPin1.state = LOW;
+        config_data[0].valid_state = LOW;
       }
       else
       {
-        ledPin1.state = HIGH;
+        config_data[0].valid_state = HIGH;
       }
     }
     else if (config_data[0].config_id == DIMMING)
     {
-      ledPin1.state = led_state;
+      config_data[0].valid_state = led_state;
     }
     else if (config_data[0].config_id == FAN_CONTROLLER)
     {
       if (led_state == 0 || led_state == 50 || led_state == 100 || led_state == 150 || led_state == 200 || led_state == 255)
       {
-        ledPin1.state = led_state;
+        config_data[0].valid_state = led_state;
       }
       else if (led_state > 0 && led_state < 50)
       {
-        ledPin1.state = 50;
+        config_data[0].valid_state = 50;
       }
       else if (led_state > 50 && led_state < 100)
       {
-        ledPin1.state = 100;
+        config_data[0].valid_state = 100;
       }
       else if (led_state > 100 && led_state < 150)
       {
-        ledPin1.state = 150;
+        config_data[0].valid_state = 150;
       }
       else if (led_state > 150 && led_state < 200)
       {
-        ledPin1.state = 200;
+        config_data[0].valid_state = 200;
       }
       else if (led_state > 200 && led_state < 255)
       {
-        ledPin1.state = 255;
+        config_data[0].valid_state = 255;
       }
     }
-    update_config_struct(led_no,ledPin1.state);
+    config_data[0].led = led_no;
+    //update_config_struct(led_no,config_data[0].valid_state);
   }
 
   //LED == 2
@@ -335,46 +304,47 @@ void validate_state(uint8 led_no, uint8 led_state_t)
     {
       if (led_state == 0)
       {
-        ledPin2.state = LOW;
+        config_data[1].valid_state = LOW;
       }
       else
       {
-        ledPin2.state = HIGH;
+        config_data[1].valid_state = HIGH;
       }
     }
     else if (config_data[1].config_id == DIMMING)
     {
-      ledPin2.state = led_state;
+      config_data[1].valid_state = led_state;
     }
     
     else if (config_data[1].config_id == FAN_CONTROLLER)
     {
-      if (ledPin2.state == 0 || ledPin2.state == 50 || ledPin2.state == 100 || ledPin2.state == 150 || ledPin2.state == 200 || ledPin2.state == 255)
+      if (config_data[1].valid_state == 0 || config_data[1].valid_state == 50 || config_data[1].valid_state == 100 || config_data[1].valid_state == 150 || config_data[1].valid_state == 200 || config_data[1].valid_state == 255)
       {
-        ledPin2.state = led_state;
+        config_data[1].valid_state = led_state;
       }
       else if (led_state > 0 && led_state < 50)
       {
-        ledPin2.state = 50;
+        config_data[1].valid_state = 50;
       }
       else if (led_state > 50 && led_state < 100)
       {
-        ledPin2.state = 100;
+        config_data[1].valid_state = 100;
       }
       else if (led_state > 100 && led_state < 150)
       {
-        ledPin2.state = 150;
+        config_data[1].valid_state = 150;
       }
       else if (led_state > 150 && led_state < 200)
       {
-        ledPin2.state = 200;
+        config_data[1].valid_state = 200;
       }
       else if (led_state > 200 && led_state < 255)
       {
-        ledPin2.state = 255;
+        config_data[1].valid_state = 255;
       }
     }
-    update_config_struct(led_no,ledPin2.state);
+    config_data[1].led = led_no;
+    //update_config_struct(led_no,config_data[1].valid_state);
   }
   //LED == 3
   else if (led_no == 3)
@@ -383,46 +353,47 @@ void validate_state(uint8 led_no, uint8 led_state_t)
     {
       if (led_state == 0)
       {
-        ledPin3.state = LOW;
+        config_data[2].valid_state = LOW;
       }
       else
       {
-        ledPin3.state = HIGH;
+        config_data[2].valid_state = HIGH;
       }
     }
     else if (config_data[2].config_id == DIMMING)
     {
-      ledPin3.state = led_state;
+      config_data[2].valid_state = led_state;
       
     }
     else if (config_data[2].config_id == FAN_CONTROLLER)
     {
       if (led_state == 0 || led_state == 50 || led_state == 100 || led_state == 150 || led_state == 200 || led_state == 255)
       {
-        ledPin3.state = led_state;
+        config_data[2].valid_state = led_state;
       }
       else if (led_state > 0 && led_state < 50)
       {
-        ledPin3.state = 50;
+        config_data[2].valid_state = 50;
       }
       else if (led_state > 50 && led_state < 100)
       {
-        ledPin3.state = 100;
+        config_data[2].valid_state = 100;
       }
       else if (led_state > 100 && led_state < 150)
       {
-        ledPin3.state = 150;
+        config_data[2].valid_state = 150;
       }
       else if (led_state > 150 && led_state < 200)
       {
-        ledPin3.state = 200;
+        config_data[2].valid_state = 200;
       }
       else if (led_state > 200 && led_state < 255)
       {
-        ledPin3.state = 255;
+        config_data[2].valid_state = 255;
       }
     }
-    update_config_struct(led_no,ledPin3.state);
+    config_data[2].led = led_no;
+    //update_config_struct(led_no,config_data[2].valid_state);
   }
   //LED == 4
   else if (led_no == 4)
@@ -431,51 +402,47 @@ void validate_state(uint8 led_no, uint8 led_state_t)
     {
       if (led_state == 0)
       {
-        ledPin4.state = LOW;
+        config_data[3].valid_state = LOW;
       }
       else
       {
-        ledPin4.state = HIGH;
+        config_data[3].valid_state = HIGH;
       }
     }
     else if (config_data[3].config_id == DIMMING)
     {
-      //if(ledPin4.state > 0 && ledPin4.state <=255){
-      ledPin4.state = led_state;
-      // }
-      // else
-      // {
-      //   led_state = LOW;
-      // }
+      config_data[3].valid_state = led_state;
+      
     }
     else if (config_data[3].config_id == FAN_CONTROLLER)
     {
       if (led_state == 0 || led_state == 50 || led_state == 100 || led_state == 150 || led_state == 200 || led_state == 255)
       {
-        ledPin4.state = led_state;
+        config_data[3].valid_state = led_state;
       }
       else if (led_state > 0 && led_state < 50)
       {
-        ledPin4.state = 50;
+        config_data[3].valid_state = 50;
       }
       else if (led_state > 50 && led_state < 100)
       {
-        ledPin4.state = 100;
+        config_data[3].valid_state = 100;
       }
       else if (led_state > 100 && led_state < 150)
       {
-        ledPin4.state = 150;
+        config_data[3].valid_state = 150;
       }
       else if (led_state > 150 && led_state < 200)
       {
-        ledPin4.state = 200;
+        config_data[3].valid_state = 200;
       }
       else if (led_state > 200 && led_state < 255)
       {
-        ledPin4.state = 255;
+        config_data[3].valid_state = 255;
       }
     }
-    update_config_struct(led_no,ledPin4.state);
+    config_data[3].led = led_no;
+    //update_config_struct(led_no,config_data[3].valid_state);
   }
 }
 
@@ -490,13 +457,11 @@ void configure_switch(void)
   uint8 config_id = 0, led_no = 0, data_ptr = 1, no_of_led = 0;
   no_of_led = data_buff[data_ptr++];
 
-  //led_state   = data_buff[data_ptr++];
   for (uint8 i = 0; i < no_of_led; i++)
   {
     led_no = data_buff[data_ptr++];
     config_id = data_buff[data_ptr++];
     correct_config_state(led_no, config_id);
-    //update_config_struct(led_no, led_state);
   }
 }
 /**************************************************************************
@@ -513,210 +478,199 @@ void correct_config_state(uint8 led_no, uint8 config_id)
   {
     if (config_id == ONOFF)
     {
-      if (ledPin1.state == 0)
+      if (config_data[0].valid_state == 0)
       {
-        led_state = LOW;
+        config_data[0].valid_state = LOW;
       }
       else
       {
-        led_state = HIGH;
+        config_data[0].valid_state = HIGH;
       }
     }
     else if (config_id == DIMMING)
     {
-      //if(ledPin1.state >0 && ledPin1.state <=255){
-      led_state = ledPin1.state;
-      // }
-      // else
-      // {
-      //   led_state = LOW;
-      // }
+      config_data[0].valid_state = config_data[0].valid_state;
+      
     }
     else if (config_id == FAN_CONTROLLER)
     {
-      if (ledPin1.state == 0 || ledPin1.state == 50 || ledPin1.state == 100 || ledPin1.state == 150 || ledPin1.state == 200 || ledPin1.state == 255)
+      if (config_data[0].valid_state == 0 || config_data[0].valid_state == 50 || config_data[0].valid_state == 100 || config_data[0].valid_state == 150 || config_data[0].valid_state == 200 || config_data[0].valid_state == 255)
       {
-        led_state = ledPin1.state;
+        config_data[0].valid_state = config_data[0].valid_state;
       }
-      else if (ledPin1.state > 0 && ledPin1.state < 50)
+      else if (config_data[0].valid_state > 0 && config_data[0].valid_state < 50)
       {
-        led_state = 50;
+        config_data[0].valid_state = 50;
       }
-      else if (ledPin1.state > 50 && ledPin1.state < 100)
+      else if (config_data[0].valid_state > 50 && config_data[0].valid_state < 100)
       {
-        led_state = 100;
+        config_data[0].valid_state = 100;
       }
-      else if (ledPin1.state > 100 && ledPin1.state < 150)
+      else if (config_data[0].valid_state > 100 && config_data[0].valid_state < 150)
       {
-        led_state = 150;
+        config_data[0].valid_state = 150;
       }
-      else if (ledPin1.state > 150 && ledPin1.state < 200)
+      else if (config_data[0].valid_state> 150 && config_data[0].valid_state < 200)
       {
-        led_state = 200;
+        config_data[0].valid_state = 200;
       }
-      else if (ledPin1.state > 200 && ledPin1.state < 255)
+      else if (config_data[0].valid_state > 200 && config_data[0].valid_state < 255)
       {
-        led_state = 255;
+        config_data[0].valid_state = 255;
       }
     }
     config_data[0].config_id = config_id;
-    update_config_struct(led_no,led_state);
+    config_data[0].led = led_no;
+    //update_config_struct(led_no,led_state);
   }
   //LED == 2
   else if (led_no == 2)
   {
     if (config_id == ONOFF)
     {
-      if (ledPin1.state == 0)
+      if (config_data[1].valid_state == 0)
       {
-        led_state = LOW;
+        config_data[1].valid_state = LOW;
       }
       else
       {
-        led_state = HIGH;
+        config_data[1].valid_state = HIGH;
       }
     }
     else if (config_id == DIMMING)
     {
-      //if(ledPin1.state >0 && ledPin1.state <=255){
-      led_state = ledPin1.state;
+      config_data[1].valid_state = config_data[1].valid_state;
     }
-    // else
-    // {
-    //   led_state = LOW;
-    // }
+    
     else if (config_id == FAN_CONTROLLER)
     {
-      if (ledPin2.state == 0 || ledPin2.state == 50 || ledPin2.state == 100 || ledPin2.state == 150 || ledPin2.state == 200 || ledPin2.state == 255)
+      if (config_data[1].valid_state == 0 || config_data[1].valid_state == 50 || config_data[1].valid_state == 100 || config_data[1].valid_state == 150 || config_data[1].valid_state == 200 || config_data[1].valid_state == 255)
       {
-        led_state = ledPin1.state;
+        config_data[1].valid_state = ledPin1.state;
       }
-      else if (ledPin2.state > 0 && ledPin2.state < 50)
+      else if (config_data[1].valid_state > 0 && config_data[1].valid_state < 50)
       {
-        led_state = 50;
+        config_data[1].valid_state = 50;
       }
-      else if (ledPin2.state > 50 && ledPin2.state < 100)
+      else if (config_data[1].valid_state > 50 && config_data[1].valid_state < 100)
       {
-        led_state = 100;
+        config_data[1].valid_state = 100;
       }
-      else if (ledPin2.state > 100 && ledPin2.state < 150)
+      else if (config_data[1].valid_state > 100 && config_data[1].valid_state < 150)
       {
-        led_state = 150;
+        config_data[1].valid_state = 150;
       }
-      else if (ledPin2.state > 150 && ledPin2.state < 200)
+      else if (config_data[1].valid_state > 150 && config_data[1].valid_state < 200)
       {
-        led_state = 200;
+        config_data[1].valid_state = 200;
       }
-      else if (ledPin2.state > 200 && ledPin2.state < 255)
+      else if (config_data[1].valid_state > 200 && config_data[1].valid_state < 255)
       {
-        led_state = 255;
+        config_data[1].valid_state = 255;
       }
     }
     config_data[1].config_id = config_id;
-    update_config_struct( led_no, led_state );
+    config_data[1].led = led_no;
+    //update_config_struct( led_no, led_state );
   }
   //LED == 3
-  else if (led_no == 3)
-  {
+  else if (led_no == 3){
     if (config_id == ONOFF)
     {
-      if (ledPin3.state == 0)
+      if (config_data[2].valid_state == 0)
       {
-        led_state = LOW;
+        config_data[2].valid_state = LOW;
       }
       else
       {
-        led_state = HIGH;
+        config_data[2].valid_state = HIGH;
       }
     }
     else if (config_id == DIMMING)
     {
-      led_state = ledPin3.state;
+      config_data[2].valid_state = config_data[2].valid_state;
     }
     else if (config_id == FAN_CONTROLLER)
     {
-      if (ledPin3.state == 0 || ledPin3.state == 50 || ledPin3.state == 100 || ledPin3.state == 150 || ledPin3.state == 200 || ledPin3.state == 255)
+      if (config_data[2].valid_state == 0 || config_data[2].valid_state == 50 || config_data[2].valid_state == 100 || config_data[2].valid_state == 150 || config_data[2].valid_state == 200 || config_data[2].valid_state == 255)
       {
-        led_state = ledPin3.state;
+        config_data[2].valid_state = config_data[2].valid_state;
       }
-      else if (ledPin3.state > 0 && ledPin3.state < 50)
+      else if (config_data[2].valid_state > 0 && config_data[2].valid_state < 50)
       {
-        led_state = 50;
+        config_data[2].valid_state = 50;
       }
-      else if (ledPin3.state > 50 && ledPin3.state < 100)
+      else if (config_data[2].valid_state > 50 && config_data[2].valid_state < 100)
       {
-        led_state = 100;
+        config_data[2].valid_state = 100;
       }
-      else if (ledPin3.state > 100 && ledPin3.state < 150)
+      else if (config_data[2].valid_state > 100 && config_data[2].valid_state < 150)
       {
-        led_state = 150;
+        config_data[2].valid_state = 150;
       }
-      else if (ledPin3.state > 150 && ledPin3.state < 200)
+      else if (config_data[2].valid_state > 150 && config_data[2].valid_state < 200)
       {
-        led_state = 200;
+        config_data[2].valid_state = 200;
       }
-      else if (ledPin3.state > 200 && ledPin3.state < 255)
+      else if (config_data[2].valid_state > 200 && config_data[2].valid_state < 255)
       {
-        led_state = 255;
+        config_data[2].valid_state = 255;
       }
     }
     config_data[2].config_id = config_id;
-    update_config_struct(led_no,led_state);
+    config_data[2].led = led_no;
+    //update_config_struct(led_no,led_state);
   }
   //LED == 4
-  else if (led_no == 4)
-  {
+  else if (led_no == 4){
     if (config_id == ONOFF)
     {
-      if (ledPin4.state == 0)
+      if (config_data[3].valid_state == 0)
       {
-        led_state = LOW;
+        config_data[3].valid_state = LOW;
       }
       else
       {
-        led_state = HIGH;
+        config_data[3].valid_state = HIGH;
       }
     }
     else if (config_id == DIMMING)
     {
-      //if(ledPin4.state > 0 && ledPin4.state <=255){
-      led_state = ledPin4.state;
-      // }
-      // else
-      // {
-      //   led_state = LOW;
-      // }
+      config_data[3].valid_state = config_data[3].valid_state;
+      
     }
     else if (config_id == FAN_CONTROLLER)
     {
-      if (ledPin4.state == 0 || ledPin4.state == 50 || ledPin4.state == 100 || ledPin4.state == 150 || ledPin4.state == 200 || ledPin4.state == 255)
+      if (config_data[3].valid_state == 0 || config_data[3].valid_state == 50 || config_data[3].valid_state == 100 || config_data[3].valid_state == 150 || config_data[3].valid_state == 200 || config_data[3].valid_state == 255)
       {
-        led_state = ledPin4.state;
+        config_data[3].valid_state = config_data[3].valid_state;
       }
-      else if (ledPin4.state > 0 && ledPin4.state < 50)
+      else if (config_data[3].valid_state > 0 && config_data[3].valid_state < 50)
       {
-        led_state = 50;
+        config_data[3].valid_state = 50;
       }
-      else if (ledPin4.state > 50 && ledPin4.state < 100)
+      else if (config_data[3].valid_state > 50 && config_data[3].valid_state < 100)
       {
-        led_state = 100;
+        config_data[3].valid_state = 100;
       }
-      else if (ledPin4.state > 100 && ledPin4.state < 150)
+      else if (config_data[3].valid_state > 100 && config_data[3].valid_state < 150)
       {
-        led_state = 150;
+        config_data[3].valid_state = 150;
       }
-      else if (ledPin4.state > 150 && ledPin4.state < 200)
+      else if (config_data[3].valid_state > 150 && config_data[3].valid_state < 200)
       {
-        led_state = 200;
+        config_data[3].valid_state = 200;
       }
-      else if (ledPin4.state > 200 && ledPin4.state < 255)
+      else if (config_data[3].valid_state > 200 && config_data[3].valid_state < 255)
       {
-        led_state = 255;
+        config_data[3].valid_state = 255;
       }
     }
     config_data[3].config_id = config_id;
-    update_config_struct(led_no,led_state);
+    config_data[3].led = led_no;
+    //update_config_struct(led_no,led_state);
   }
+    update_config_to_memory();
 }
 
 /***********************************************************************
@@ -814,10 +768,11 @@ void uart_send_config_sate_ack(void){
 void uart_send_button_ack(void){
   uint8 Tx_buff[6] = {0};
   Tx_buff[0] = 0xAA;
-  Tx_buff[1] = 0x02;
-  Tx_buff[2] = cmd_id;
+  Tx_buff[1] = 0x03;
+  Tx_buff[2] = 0x05;
   Tx_buff[3] = button_Pressed;
-  Tx_buff[4] = 0xFF;
+  Tx_buff[4] = button_state;
+  Tx_buff[5] = 0xFF;
   HalUARTWrite(HAL_UART_PORT_0, Tx_buff, 6);
 }
 
@@ -850,33 +805,44 @@ HAL_ISR_FUNCTION(halKeusPort1Isr, P1INT_VECTOR)
     {
       ledPin1.state = KeusGPIOToggledState(ledPin1.state); //toggle led at button pressed
       KeusGPIOSetPinValue(&ledPin1);
-      button_Pressed = SWITCH_1;
+      config_data[0].valid_state =  ledPin1.state;
+      button_state = !ledPin1.state;
       event_t = 0x10;
+      button_Pressed = SWITCH_1;
+
     }
 
     if (P1IFG & BV(buttonPin2.bit))
     {
       ledPin2.state = KeusGPIOToggledState(ledPin2.state);
       KeusGPIOSetPinValue(&ledPin2);
-      button_Pressed = SWITCH_2;
+      config_data[1].valid_state =  ledPin2.state;
+      button_state = !ledPin2.state;
       event_t = 0x10;
+      button_Pressed = SWITCH_2;
+
     }
 
     if (P1IFG & BV(buttonPin3.bit))
     {
       ledPin3.state = KeusGPIOToggledState(ledPin3.state);
       KeusGPIOSetPinValue(&ledPin3);
-      button_Pressed = SWITCH_3;
+      config_data[2].valid_state =  ledPin3.state;
+      button_state = !ledPin3.state;
       event_t = 0x10;
+      button_Pressed = SWITCH_3;
     }
     if (P1IFG & BV(buttonPin4.bit))
     {
       ledPin4.state = KeusGPIOToggledState(ledPin4.state);
       KeusGPIOSetPinValue(&ledPin4);
-      button_Pressed = SWITCH_4;
+      config_data[3].valid_state =  ledPin4.state;
+      button_state = !ledPin4.state;
       event_t = 0x10;
+      button_Pressed = SWITCH_4;
+
+
     }
-    KeusTimerUtilAddTimer(&debounceTimer);
   }
 
   /*
@@ -890,7 +856,7 @@ HAL_ISR_FUNCTION(halKeusPort1Isr, P1INT_VECTOR)
   HAL_EXIT_ISR();
 }
 
-
+//*************************NVIC MEMORY
 
 /*******************************************************
  * @fn          KeusThemeSwitchMiniMemoryInit
@@ -918,7 +884,7 @@ bool KeusThemeSwitchMiniMemoryInit(void)
 }
 /*******************************************************
  * @fn      KeusThemeSwitchMiniReadConfigDataIntoMemory
- * @brief    
+ * @brief   NVIC memory read 
  * @return
  * @param  
  * ****************************************************/
@@ -936,8 +902,8 @@ bool KeusThemeSwitchMiniReadConfigDataIntoMemory(void)
   }
 }
 /********************************************************
- * @fn  KeusThemeSwitchMiniWriteConfigDataIntoMemory
- * @brief   
+ * @fn      KeusThemeSwitchMiniWriteConfigDataIntoMemory
+ * @brief   NVIC Memory write
  * @return
  * @param
  * *****************************************************/
