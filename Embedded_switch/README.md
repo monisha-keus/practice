@@ -13,7 +13,6 @@ Ex: 	AA 08 01 03 01 01 02 01 03 00 FF
 Cmd:	S	len	cmd_id	  no_of_led	<led_no state> 	E
 Ex: 	AA 0A 01 04 01 10 02 77 03 46 04 56 FF
 
-AA 08 02 03 01 02 02 02 03 02 FF
 AA 0A 02 04 01 02 02 02 03 02 04 02 FF
 
 AA 08 01 03 01 10 02 77 04 46 FF
